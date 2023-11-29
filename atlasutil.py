@@ -173,6 +173,8 @@ def update_seaorm_lib(src_dir: str, mod_name: str):
     with open(os.path.join(src_dir, "lib.rs"), "w") as fp:
         fp.writelines(lines)
 
+    run(["cargo", "fmt", "--", os.path.join(src_dir, "lib.rs")], check=True)
+
 
 def create_schema_migration(dir: str, name: str, to: str, src_dir: str):
     migration_filename = make_migration(dir=dir, name=name, to=to)
