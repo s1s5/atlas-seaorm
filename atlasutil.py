@@ -1,3 +1,4 @@
+import datetime
 import glob
 import os
 import re
@@ -130,8 +131,9 @@ impl MigrationTrait for Migration {
 """
 
 
-def generate_seaorm_migration(src_dir: str, dir: str, basename: str):
-    mod_name = "m" + os.path.splitext(basename)[0]
+def generate_seaorm_migration(name: str, src_dir: str, dir: str, basename: str):
+    t = os.path.splitext(basename)[0]
+    mod_name = "m" + t[:8] + "_" + t[8:]  # seaormのスタイルに合わせる
     up_fn = os.path.relpath(os.path.join(dir, "up", basename), src_dir)
     down_fn = os.path.relpath(os.path.join(dir, "down", basename), src_dir)
     up_cmd = EXEC_SQL % up_fn
@@ -172,26 +174,56 @@ def update_seaorm_lib(src_dir: str, mod_name: str):
         fp.writelines(lines)
 
 
-def main(dir: str, name: str, to: str):
+def create_schema_migration(dir: str, name: str, to: str, src_dir: str):
     migration_filename = make_migration(dir=dir, name=name, to=to)
     if migration_filename is None:
         return
     mod_name = generate_seaorm_migration(
-        src_dir="migration/src", dir=dir, basename=migration_filename
+        name=name, src_dir=src_dir, dir=dir, basename=migration_filename
     )
-    update_seaorm_lib(src_dir="migration/src", mod_name=mod_name)
+    update_seaorm_lib(src_dir=src_dir, mod_name=mod_name)
+
+
+def create_data_migration(name: str, src_dir: str):
+    now = datetime.datetime.utcnow()
+    mod_name = now.strftime(f"m%Y%m%d_%H%M%S_{name}")
+
+    with open(os.path.join(src_dir, mod_name + ".rs"), "w") as fp:
+        fp.write(MIGRATION_FILE_TEMPLATE % ("", ""))
+
+    update_seaorm_lib(src_dir=src_dir, mod_name=mod_name)
 
 
 def __entry_point():
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="",  # プログラムの説明
+        description="create migration files",  # プログラムの説明
     )
-    parser.add_argument("--name", default="diff")
-    parser.add_argument("--to", default="migration/schema")
-    parser.add_argument("--dir", default="migration/atlas")
-    main(**dict(parser.parse_args()._get_kwargs()))
+    subparsers = parser.add_subparsers()
+
+    parser_schema = subparsers.add_parser("schema", help="see `schema -h`")
+    parser_schema.add_argument("--name", default="schema")
+    parser_schema.add_argument("--to", default="migration/schema")
+    parser_schema.add_argument("--dir", default="migration/atlas")
+    parser_schema.add_argument("--src-dir", default="migration/src")
+    parser_schema.set_defaults(
+        handler=lambda args: create_schema_migration(**args._get_kwargs())
+    )
+
+    parser_data = subparsers.add_parser("data", help="see `data -h`")
+    parser_data.add_argument("--name", default="data")
+    parser_schema.add_argument("--src-dir", default="migration/src")
+    parser_data.set_defaults(
+        handler=lambda args: create_data_migration(**args._get_kwargs())
+    )
+
+    args = parser.parse_args()
+    if hasattr(args, "handler"):
+        args.handler(args)
+    else:
+        # 未知のサブコマンドの場合はヘルプを表示
+        parser.print_help()
 
 
 if __name__ == "__main__":
