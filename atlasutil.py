@@ -1,9 +1,13 @@
 import datetime
 import glob
 import os
+import random
 import re
+import select
 import shutil
+import subprocess
 import tempfile
+import time
 import uuid
 from subprocess import run
 
@@ -110,7 +114,7 @@ EXEC_SQL = """
             .await?;
 """
 
-MIGRATION_FILE_TEMPLATE = """
+MIGRATION_FILE_TEMPLATE = """%s
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -140,7 +144,7 @@ def generate_seaorm_migration(name: str, src_dir: str, dir: str, basename: str):
     down_cmd = EXEC_SQL % down_fn
 
     with open(os.path.join(src_dir, mod_name + ".rs"), "w") as fp:
-        fp.write(MIGRATION_FILE_TEMPLATE % (up_cmd, down_cmd))
+        fp.write(MIGRATION_FILE_TEMPLATE % ("", up_cmd, down_cmd))
 
     return mod_name
 
@@ -171,12 +175,14 @@ def update_seaorm_lib(src_dir: str, mod_name: str):
         lines.insert(end_index, (" " * 12) + expr + ",")
 
     with open(os.path.join(src_dir, "lib.rs"), "w") as fp:
-        fp.writelines(lines)
+        fp.write("\n".join(lines))
 
     run(["cargo", "fmt", "--", os.path.join(src_dir, "lib.rs")], check=True)
 
 
-def create_schema_migration(dir: str, name: str, to: str, src_dir: str):
+def create_schema_migration(
+    dir: str, name: str, to: str, src_dir: str, **_other_kwargs
+):
     migration_filename = make_migration(dir=dir, name=name, to=to)
     if migration_filename is None:
         return
@@ -186,14 +192,91 @@ def create_schema_migration(dir: str, name: str, to: str, src_dir: str):
     update_seaorm_lib(src_dir=src_dir, mod_name=mod_name)
 
 
-def create_data_migration(name: str, src_dir: str):
+def create_data_migration(name: str, src_dir: str, dir: str, **_other_kwargs):
     now = datetime.datetime.utcnow()
     mod_name = now.strftime(f"m%Y%m%d_%H%M%S_{name}")
 
-    with open(os.path.join(src_dir, mod_name + ".rs"), "w") as fp:
-        fp.write(MIGRATION_FILE_TEMPLATE % ("", ""))
+    schema = sorted(
+        glob.glob(os.path.join(os.path.join(dir, "down"), "schema-*")), reverse=True
+    )[0]
+    generate_entity(to=schema, src_dir=src_dir, mod_name=mod_name)
+    with open(os.path.join(src_dir, mod_name, "mod.rs"), "w") as fp:
+        fp.write(MIGRATION_FILE_TEMPLATE % ("mod entity;", "", ""))
 
     update_seaorm_lib(src_dir=src_dir, mod_name=mod_name)
+
+
+def run_postgres(port: int):
+    p = subprocess.Popen(
+        [
+            "docker",
+            "run",
+            "--rm",
+            "-p",
+            f"{port}:5432",
+            "-e",
+            "POSTGRES_HOST_AUTH_METHOD=trust",
+            "postgres:15",
+        ],
+        stderr=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+    )
+    try:
+        assert p.stderr
+        poll_obj = select.poll()
+        poll_obj.register(p.stderr, select.POLLIN)
+
+        timeout = time.time() + 30
+        for i in range(1000):
+            poll_result = poll_obj.poll(max(1, timeout - time.time()))
+            if poll_result:
+                line = p.stderr.readline()
+                if "database system is ready to accept connections" in str(line):
+                    break
+            if time.time() > timeout or i >= 999:
+                raise Exception("timeout")
+        return p
+    except Exception:
+        p.kill()
+        raise
+
+
+def generate_entity(to: str, src_dir: str, mod_name: str):
+    port = random.randint(10000, 65536)
+    p = run_postgres(port)
+    try:
+        postgres_url = f"postgres://postgres:pass@localhost:{port}/postgres"
+        run(
+            [
+                "atlas",
+                "schema",
+                "apply",
+                "--url",
+                postgres_url + "?sslmode=disable",
+                "--to",
+                f"file://{to}",
+                "--dev-url",
+                "docker://postgres/15",
+                "--auto-approve",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        run(
+            [
+                "sea-orm-cli",
+                "generate",
+                "entity",
+                "-u",
+                postgres_url,
+                "-o",
+                os.path.join(src_dir, mod_name, "entity"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+    finally:
+        p.terminate()
 
 
 def __entry_point():
@@ -210,14 +293,15 @@ def __entry_point():
     parser_schema.add_argument("--dir", default="migration/atlas")
     parser_schema.add_argument("--src-dir", default="migration/src")
     parser_schema.set_defaults(
-        handler=lambda args: create_schema_migration(**args._get_kwargs())
+        handler=lambda args: create_schema_migration(**dict(args._get_kwargs()))
     )
 
     parser_data = subparsers.add_parser("data", help="see `data -h`")
     parser_data.add_argument("--name", default="data")
-    parser_schema.add_argument("--src-dir", default="migration/src")
+    parser_data.add_argument("--dir", default="migration/atlas")
+    parser_data.add_argument("--src-dir", default="migration/src")
     parser_data.set_defaults(
-        handler=lambda args: create_data_migration(**args._get_kwargs())
+        handler=lambda args: create_data_migration(**dict(args._get_kwargs()))
     )
 
     args = parser.parse_args()
