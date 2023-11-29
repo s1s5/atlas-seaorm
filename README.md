@@ -72,3 +72,12 @@ enum Post {
     Text,
 }
 ```
+
+
+
+python atlasutil.py schema  --name create_user_table --to ./test-schemas/00.sql
+python atlasutil.py schema  --name create_manager_table --to ./test-schemas/01.sql
+python atlasutil.py data  --name seed_data
+python atlasutil.py schema  --name add_foreign_key --to ./test-schemas/02.sql
+python atlasutil.py data  --name set_manager_id
+python atlasutil.py schema  --name set_nonnull --to ./test-schemas/03.sql

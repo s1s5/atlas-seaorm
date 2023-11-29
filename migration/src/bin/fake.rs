@@ -1,3 +1,4 @@
+use clap::{Parser, Subcommand};
 use sea_orm::ActiveValue;
 use sea_orm::EntityTrait;
 use sea_orm::QueryFilter;
@@ -6,9 +7,52 @@ use sea_orm_migration::seaql_migrations;
 use std::time::SystemTime;
 use tracing::info;
 
+#[derive(Parser)]
+struct Args {
+    // #[arg(
+    //     global = true,
+    //     short = 'u',
+    //     long,
+    //     env = "DATABASE_URL",
+    //     help = "Database URL"
+    // )]
+    // database_url: String,
+    #[command(subcommand)]
+    command: Subcommands,
+}
+
+#[derive(Subcommand, PartialEq, Eq, Debug)]
+pub enum Subcommands {
+    #[command(about = "Apply pending migrations", display_order = 70)]
+    Up {
+        #[arg(short, long, help = "Number of pending migrations to apply")]
+        num: Option<u32>,
+    },
+
+    #[command(about = "Rollback applied migrations", display_order = 80)]
+    Down {
+        #[arg(
+            short,
+            long,
+            default_value = "1",
+            help = "Number of applied migrations to be rolled back",
+            display_order = 90
+        )]
+        num: u32,
+    },
+}
+
 #[async_std::main]
-async fn main() {
-    let migrator = migration::Migrator;
+async fn main() -> anyhow::Result<()> {
+    let args = Args::parse();
+    let db = sea_orm::Database::connect(std::env::var("DATABASE_URL").unwrap()).await?;
+
+    match args.command {
+        Subcommands::Up { num } => exec_up(&db, num).await?,
+        Subcommands::Down { num } => exec_down(&db, Some(num)).await?,
+    }
+
+    Ok(())
 }
 
 type M = migration::Migrator;
