@@ -1,0 +1,22 @@
+[package]
+name = "sea-orm-test"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+members = [
+    ".",
+    ]
+
+
+[dependencies]
+sea-orm = { version = "0.12.3", features = [
+    "sqlx-postgres",
+        "runtime-tokio-rustls",
+            "macros",
+                "mock",
+                    "debug-print",
+                    ] }
+clap = { version = "4.4.6", features = ["derive"] }
+
