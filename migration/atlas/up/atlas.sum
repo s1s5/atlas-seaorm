@@ -1,0 +1,5 @@
+h1:OeaDSpidF0wasiBX+UmNLlUO7Yj8M/wHD3lh7wgybvc=
+20231129085922_create_user_table.sql h1:4OWywYbBx/qO/o29hlevtHSTGE81Rj7TvQifhHnG6jU=
+20231129090020_create_manager_table.sql h1:AvZs8RKj/O95lZnDDEoA63DU/XFNcwd0Dl6DmaOXtxo=
+20231129090105_add_foreign_key.sql h1:3JzfXZmt+75fSvGyu4MJ7fUNGHWg2EklPX5gnoIWZNo=
+20231129090211_set_nonnull.sql h1:eWUWq7OV2FDGBwoxHpggtoC8eIUDuNPk8WRVe0SLGd8=
