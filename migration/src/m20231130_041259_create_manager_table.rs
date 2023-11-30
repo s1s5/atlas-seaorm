@@ -9,7 +9,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(include_str!(
-                "../atlas/up/20231129090020_create_manager_table.sql"
+                "../atlas/up/20231130041259_create_manager_table.sql"
             ))
             .await?;
 
@@ -20,7 +20,7 @@ impl MigrationTrait for Migration {
         manager
             .get_connection()
             .execute_unprepared(include_str!(
-                "../atlas/down/20231129090020_create_manager_table.sql"
+                "../atlas/down/20231130041259_create_manager_table.sql"
             ))
             .await?;
 

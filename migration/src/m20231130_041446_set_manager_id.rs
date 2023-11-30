@@ -1,4 +1,4 @@
-use super::m20231129_090123_set_manager_id_entity as entity;
+use super::m20231130_041446_set_manager_id_entity as entity;
 use sea_orm::{ActiveModelTrait, EntityTrait, Set};
 use sea_orm_migration::prelude::*;
 

@@ -1,5 +1,5 @@
-use super::m20231129_090036_seed_data_entity as entity;
-use sea_orm::{ActiveModelTrait, Set};
+use super::m20231130_041352_seed_data_entity as entity;
+use sea_orm::*;
 use sea_orm_migration::prelude::*;
 
 #[derive(DeriveMigrationName)]
@@ -36,7 +36,6 @@ impl MigrationTrait for Migration {
         }
         .insert(db)
         .await?;
-
         Ok(())
     }
 

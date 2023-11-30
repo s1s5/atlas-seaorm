@@ -115,7 +115,7 @@ def make_migration(dir: str, name: str, to: str):
 
     up_migration_file = get_latest_migration_file(up_dir)
     os.makedirs(down_dir, exist_ok=True)
-    with open(os.path.join(down_dir, up_migration_file), "wb") as fp:
+    with open(os.path.join(down_dir, os.path.basename(up_migration_file)), "wb") as fp:
         fp.write(down_migration_str)
 
     logger.info("new migration file = %s", up_migration_file)
@@ -313,10 +313,7 @@ def create_data_migration(name: str, src_dir: str, dir: str, **_other_kwargs):
     now = datetime.datetime.utcnow()
     mod_name = now.strftime(f"m%Y%m%d_%H%M%S_{name}")
 
-    schema = sorted(
-        glob.glob(os.path.join(os.path.join(dir, "down"), "schema-*")), reverse=True
-    )[0]
-    generate_entity(to=schema, ent_dir=os.path.join(src_dir, f"{mod_name}_entity"))
+    generate_entity(to=os.path.join(dir, "up"), ent_dir=os.path.join(src_dir, f"{mod_name}_entity"))
     with open(os.path.join(src_dir, f"{mod_name}.rs"), "w") as fp:
         fp.write(
             MIGRATION_FILE_TEMPLATE
