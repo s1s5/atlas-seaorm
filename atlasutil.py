@@ -34,10 +34,10 @@ def setup_log(log_level: typing.Literal["debug", "info", "error"]):
     )
 
 
-def get_previous_schema(td: str, down_dir: str):
+def get_previous_schema(td: str, up_dir: str):
     """前回のマイグレーション後のスキーマ"""
-    if os.path.exists(down_dir):
-        return sorted(glob.glob(os.path.join(down_dir, "schema-*")), reverse=True)[0]
+    if os.path.exists(up_dir):
+        return up_dir
     previous_schema = os.path.join(td, uuid.uuid4().hex + ".sql")
     with open(previous_schema, "w"):
         pass
@@ -63,17 +63,36 @@ def make_migration(dir: str, name: str, to: str):
     up_dir = os.path.join(dir, "up")
     down_dir = os.path.join(dir, "down")
 
-    previous_schema = get_previous_schema(td=td, down_dir=down_dir)
-    logger.info("previous schema = %s", previous_schema)
+    previous_schema = get_previous_schema(td=td, up_dir=up_dir)
 
-    try:
-        prev_migration_file = get_latest_migration_file(up_dir)
-    except IndexError:
-        prev_migration_file = None
-    logger.info("previous migration file = %s", prev_migration_file)
+    logger.info("creating down migration file")
+    r = run(
+        [
+            "atlas",
+            "schema",
+            "diff",
+            "--from",
+            f"file://{to}",
+            "--to",
+            f"file://{previous_schema}",
+            "--dev-url",
+            "docker://postgres/15/dev?search_path=public",
+            "--format",
+            '{{ sql . "  " }}',
+        ],
+        capture_output=True,
+    )
+    if r.returncode != 0:
+        logger.error("%s", r.stderr)
+        raise Exception("process failed")
+    down_migration_str = r.stdout.strip()
+
+    if down_migration_str == "":
+        logger.info("no migration created")
+        return
 
     logger.info("creating up migration file")
-    run(
+    r = run(
         [
             "atlas",
             "migrate",
@@ -88,56 +107,19 @@ def make_migration(dir: str, name: str, to: str):
             "--dir",
             f"file://{up_dir}",
         ],
-        check=True,
+        capture_output=True,
     )
+    if r.returncode != 0:
+        logger.error("%s", r.stderr)
+        raise Exception("process failed")
+
     up_migration_file = get_latest_migration_file(up_dir)
-    if prev_migration_file == up_migration_file:
-        logger.info("no migration created")
-        return
+    os.makedirs(down_dir, exist_ok=True)
+    with open(os.path.join(down_dir, up_migration_file), "wb") as fp:
+        fp.write(down_migration_str)
+
     logger.info("new migration file = %s", up_migration_file)
 
-    try:
-        temp_up_dir = os.path.join(td, "up")
-        shutil.copytree(up_dir, temp_up_dir)
-        logger.info("creating down migration file")
-        run(
-            [
-                "atlas",
-                "migrate",
-                "diff",
-                name,
-                "--to",
-                f"file://{previous_schema}",
-                "--dev-url",
-                "docker://postgres/15/dev?search_path=public",
-                "--format",
-                '{{ sql . "  " }}',
-                "--dir",
-                f"file://{temp_up_dir}",
-            ],
-            check=True,
-        )
-        down_migration_file = get_latest_migration_file(temp_up_dir)
-        logger.info("new 'down' migration file =%s", down_migration_file)
-        os.makedirs(down_dir, exist_ok=True)
-        shutil.copy(
-            down_migration_file,
-            os.path.join(down_dir, os.path.basename(up_migration_file)),
-        )
-
-        logger.info("coping current schema")
-        copy_schema(
-            to=to,
-            name=os.path.basename(up_migration_file),
-            down_dir=down_dir,
-        )
-    except Exception:
-        os.remove(up_migration_file)
-
-        filename = os.path.join(down_dir, os.path.basename(up_migration_file))
-        if os.path.exists(filename):
-            os.remove(filename)
-        raise
     return os.path.basename(up_migration_file)
 
 
