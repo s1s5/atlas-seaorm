@@ -9,14 +9,15 @@ use tracing::info;
 
 #[derive(Parser)]
 struct Args {
-    // #[arg(
-    //     global = true,
-    //     short = 'u',
-    //     long,
-    //     env = "DATABASE_URL",
-    //     help = "Database URL"
-    // )]
-    // database_url: String,
+    #[arg(
+        global = true,
+        short = 'u',
+        long,
+        env = "DATABASE_URL",
+        help = "Database URL"
+    )]
+    database_url: Option<String>,
+
     #[command(subcommand)]
     command: Subcommands,
 }
@@ -45,7 +46,12 @@ pub enum Subcommands {
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    let db = sea_orm::Database::connect(std::env::var("DATABASE_URL").unwrap()).await?;
+    let db = sea_orm::Database::connect(
+        args.database_url
+            .or_else(|| std::env::var("DATABASE_URL").ok())
+            .unwrap(),
+    )
+    .await?;
 
     match args.command {
         Subcommands::Up { num } => exec_up(&db, num).await?,
